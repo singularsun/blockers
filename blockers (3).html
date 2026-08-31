@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Blockers — race &amp; block</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;
+    --panel:#18181b;
+    --panel-2:#1e1e22;
+    --panel-line:#2c2c31;
+    --cell-a:#232327;
+    --cell-b:#28282d;
+    --ink:#EDEDEE;
+    --muted:#8d8f96;
+    --green:#3ECF6E;
+    --green-dim:#1f6b3c;
+    --orange:#FF9A3C;
+    --orange-dim:#8a4f1c;
+    --wall:#C7CAD1;
+    --wall-dark:#9a9da5;
+    --danger:#E5534B;
+    --cell: clamp(28px, 8vw, 56px);
+    --gap: clamp(9px, 2.2vw, 16px);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1100px 700px at 12% -10%, #151517 0%, transparent 60%),
+      radial-gradient(900px 600px at 105% 5%, #131315 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:'Inter', system-ui, sans-serif;
+    min-height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:28px 16px 60px;
+  }
+  h1,h2,h3,.disp{ font-family:'Space Grotesk', system-ui, sans-serif; }
+  button{ font-family:inherit; }
+
+  body.in-game{ height:100vh; overflow:hidden; padding:14px; }
+  body.in-game .top-header{ display:none; }
+
+  .top-header{ display:flex; flex-direction:column; align-items:center; }
+  .brand{ display:flex; align-items:baseline; gap:10px; margin-bottom:6px; }
+  .brand .mark{
+    width:15px;height:15px;border-radius:3px;
+    background:linear-gradient(135deg,var(--green),var(--orange));
+    transform:rotate(8deg);
+  }
+  .brand h1{ font-size:26px; font-weight:700; letter-spacing:-0.02em; margin:0; }
+  .tagline{ color:var(--muted); font-size:14px; margin:0 0 34px; text-align:center; max-width:420px; line-height:1.5; }
+
+  .screen{ display:none; width:100%; max-width:960px; flex:1; }
+  .screen.active{ display:flex; flex-direction:column; align-items:center; }
+  #screen-game.active{ max-width:1100px; height:100%; }
+
+  /* ---------- home ---------- */
+  .home-grid{ display:grid; grid-template-columns: 1.1fr 1fr; gap:22px; width:100%; }
+  @media (max-width:760px){ .home-grid{ grid-template-columns:1fr; } }
+
+  .hero-board{
+    background:var(--panel); border:1px solid var(--panel-line); border-radius:16px;
+    padding:26px; display:flex; align-items:center; justify-content:center;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--panel-line); border-radius:16px;
+    padding:26px; display:flex; flex-direction:column; gap:14px;
+  }
+  .card h2{ margin:0; font-size:19px; font-weight:600; }
+  .card p{ margin:0; color:var(--muted); font-size:14px; line-height:1.5; }
+
+  .btn{
+    appearance:none; border:none; cursor:pointer; border-radius:9px;
+    padding:13px 18px; font-size:15px; font-weight:600; letter-spacing:.01em;
+    transition:transform .12s ease, filter .12s ease, background .12s ease;
+  }
+  .btn:active{ transform:scale(.97); }
+  .btn-green{ background:var(--green); color:#062513; }
+  .btn-green:hover{ filter:brightness(1.1); }
+  .btn-secondary{ background:transparent; color:var(--ink); border:1px solid var(--panel-line); }
+  .btn-secondary:hover{ border-color:#4a4a52; }
+  .btn-orange{ background:var(--orange); color:#2b1706; }
+  .btn-orange:hover{ filter:brightness(1.1); }
+  .btn-ghost{ background:transparent; color:var(--muted); border:1px dashed var(--panel-line); }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .btn-row{ display:flex; gap:10px; flex-wrap:wrap; }
+
+  .divider-row{ display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; }
+  .divider-row::before,.divider-row::after{ content:""; flex:1; height:1px; background:var(--panel-line); }
+
+  /* ---------- code / lobby ---------- */
+  .code-display{
+    font-family:'Space Grotesk', monospace; font-size:38px; font-weight:700;
+    letter-spacing:.09em; background:var(--panel-2); color:var(--ink);
+    border-radius:12px; padding:16px 10px; text-align:center; width:100%;
+    border:1px solid var(--panel-line);
+  }
+  .code-input{
+    font-family:'Space Grotesk', monospace; font-size:26px; font-weight:600;
+    letter-spacing:.14em; text-align:center; padding:14px 10px; border-radius:12px;
+    border:1px solid var(--panel-line); background:var(--panel-2); color:var(--ink); width:100%;
+  }
+  .code-input:focus{ outline:2px solid var(--green); border-color:transparent; }
+  .status-line{ display:flex; align-items:center; gap:10px; font-size:13px; color:var(--muted); }
+  .dot{ width:8px; height:8px; border-radius:50%; background:var(--muted); flex:none; }
+  .dot.pulse{ background:var(--green); animation:pulse 1.2s infinite; }
+  .dot.err{ background:var(--danger); }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
+  .error-box{ font-size:13px; color:var(--danger); background:rgba(229,83,75,.1); border:1px solid rgba(229,83,75,.35); border-radius:8px; padding:10px 12px; display:none; }
+  .error-box.show{ display:block; }
+
+  /* ---------- game screen ---------- */
+  .game-layout{ display:flex; gap:26px; width:100%; height:100%; align-items:stretch; justify-content:center; }
+  .board-col{ flex:1; display:flex; align-items:center; justify-content:center; min-width:0; }
+
+  .board-shell{ position:relative; }
+  .board{
+    position:relative;
+    display:grid;
+    grid-template-columns: repeat(8, var(--cell) var(--gap)) var(--cell);
+    grid-template-rows: repeat(8, var(--cell) var(--gap)) var(--cell);
+    background:#141416;
+    border-radius:12px;
+    padding:12px;
+    border:1px solid var(--panel-line);
+    box-shadow:0 20px 45px -20px rgba(0,0,0,.7);
+  }
+  .cell{
+    background:var(--cell-a);
+    border-radius:5px;
+    position:relative;
+    transition:background-color .1s ease;
+  }
+  .cell:nth-child(odd){ background:var(--cell-b); }
+  .cell.goal-a{ background-color:rgba(62,207,110,.16); box-shadow:inset 0 0 0 1px rgba(62,207,110,.14); }
+  .cell.goal-b{ background-color:rgba(255,154,60,.16); box-shadow:inset 0 0 0 1px rgba(255,154,60,.14); }
+  .cell.goal-a.move-hint:hover{ background-color:rgba(62,207,110,.28); }
+  .cell.goal-b.move-hint:hover{ background-color:rgba(255,154,60,.28); }
+  .cell.move-hint{ cursor:pointer; }
+  .cell.move-hint::after{
+    content:""; position:absolute; inset:0; margin:auto; width:26%; height:26%; border-radius:50%;
+    background:rgba(237,237,238,.25);
+    transition:transform .15s ease, background .15s ease;
+  }
+  .cell.move-hint:hover::after{ transform:scale(1.35); background:rgba(62,207,110,.6); }
+
+  .pawn{
+    position:relative; width:68%; height:68%; align-self:center; justify-self:center;
+    border-radius:50%; box-shadow:inset 0 -3px 5px rgba(0,0,0,.35), 0 3px 8px rgba(0,0,0,.5);
+    will-change:transform;
+  }
+  .pawn.a{ background:radial-gradient(circle at 35% 30%, #8ff5b0, var(--green)); }
+  .pawn.b{ background:radial-gradient(circle at 35% 30%, #ffc691, var(--orange)); }
+
+  .wall-bar{
+    border-radius:4px;
+    background:linear-gradient(160deg, #fff, var(--wall));
+    box-shadow:0 2px 6px rgba(0,0,0,.5);
+    animation:wallIn .18s ease;
+  }
+  @keyframes wallIn{ from{ opacity:0; transform:scale(.7);} to{ opacity:1; transform:scale(1);} }
+  .wall-bar.ghost{ animation:none; opacity:.5; pointer-events:none; }
+  .wall-bar.ghost.bad{ background:var(--danger); }
+  .wall-bar.ghost.ok{ background:var(--green); }
+
+  .notch{ position:relative; }
+  .notch .hit{ position:absolute; inset:-9px; border-radius:6px; cursor:pointer; }
+  .notch .hit:hover{ background:rgba(62,207,110,.18); }
+
+  .board.locked .cell.move-hint{ cursor:default; }
+  .board.locked .cell.move-hint::after{ display:none; }
+  .board.locked .notch .hit{ cursor:default; }
+  .board.locked .notch .hit:hover{ background:none; }
+
+  /* ---------- sidebar ---------- */
+  .sidebar{
+    width:270px; flex:none; display:flex; flex-direction:column; gap:14px;
+    overflow-y:auto; padding-right:2px;
+  }
+  .sidebar-title{ font-size:18px; font-weight:700; letter-spacing:-.02em; display:flex; align-items:center; gap:8px; }
+  .sidebar-title .mark{ width:12px;height:12px;border-radius:3px; background:linear-gradient(135deg,var(--green),var(--orange)); transform:rotate(8deg); }
+
+  .turn-banner{
+    background:var(--panel); border:1px solid var(--panel-line); border-radius:12px;
+    padding:14px 16px; font-size:14px; font-weight:600;
+  }
+  .turn-banner .sub{ font-weight:400; color:var(--muted); font-size:12.5px; margin-top:3px; }
+
+  .stat-row{
+    display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--panel-line);
+    border-radius:12px; padding:12px 14px; transition:border-color .2s ease, box-shadow .2s ease;
+  }
+  .stat-row .swatch{ width:16px; height:16px; border-radius:50%; flex:none; }
+  .stat-row .swatch.a{ background:var(--green); }
+  .stat-row .swatch.b{ background:var(--orange); }
+  .stat-row .name{ font-weight:600; font-size:13.5px; flex:1; }
+  .stat-row .walls{ font-size:12px; color:var(--muted); }
+  .stat-row.turn.a{ border-color:var(--green); box-shadow:0 0 0 1px var(--green-dim), 0 0 16px -4px var(--green); }
+  .stat-row.turn.b{ border-color:var(--orange); box-shadow:0 0 0 1px var(--orange-dim), 0 0 16px -4px var(--orange); }
+
+  .panel-block{ background:var(--panel); border:1px solid var(--panel-line); border-radius:12px; padding:14px 16px; }
+  .panel-block h3{ margin:0 0 10px; font-size:12px; text-transform:none; color:var(--muted); font-weight:600; }
+  .mode-toggle{ display:flex; gap:6px; background:var(--panel-2); border:1px solid var(--panel-line); border-radius:10px; padding:4px; }
+  .mode-toggle button{ flex:1; border:none; background:transparent; color:var(--muted); padding:8px 6px; border-radius:7px; cursor:pointer; font-size:12px; font-weight:600; }
+  .mode-toggle button.active{ background:var(--wall); color:#1a1a1a; }
+  .hint-key{ font-size:11px; color:var(--muted); margin-top:8px; }
+
+  .sidebar-spacer{ flex:1; }
+  .sidebar-actions{ display:flex; flex-direction:column; gap:8px; }
+  .sidebar-endgame{ display:none; flex-direction:column; gap:10px; }
+  .sidebar-endgame.show{ display:flex; }
+  .sidebar-endgame .result{ font-size:17px; font-weight:700; }
+  .sidebar-endgame .result .sub{ display:block; font-weight:400; color:var(--muted); font-size:12.5px; margin-top:4px; }
+
+  @media (max-width:860px){
+    body.in-game{ height:auto; overflow:auto; padding:16px; }
+    .game-layout{ flex-direction:column; height:auto; }
+    .board-col{ order:2; }
+    .sidebar{ order:1; width:100%; max-height:none; flex-direction:row; flex-wrap:wrap; }
+    .sidebar-title, .turn-banner, .panel-block, .sidebar-actions, .sidebar-endgame{ width:100%; }
+    .stat-row{ flex:1 1 200px; }
+  }
+
+  .toast{
+    position:fixed; top:18px; left:50%; transform:translateX(-50%) translateY(-14px);
+    background:var(--panel); border:1px solid var(--panel-line); color:var(--ink);
+    padding:10px 16px; border-radius:9px; font-size:13px; opacity:0; pointer-events:none;
+    transition:opacity .25s ease, transform .25s ease; z-index:50; box-shadow:0 10px 30px -12px rgba(0,0,0,.6);
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  .rules-toggle{ background:none; border:none; color:var(--muted); font-size:12.5px; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+  .rules-box{ display:none; max-width:420px; font-size:13px; color:var(--muted); line-height:1.6; text-align:left; background:var(--panel); border:1px solid var(--panel-line); border-radius:12px; padding:16px 18px; margin-top:10px; }
+  .rules-box.show{ display:block; }
+
+  ::selection{ background:var(--green); color:#062513; }
+  @media (prefers-reduced-motion: reduce){ *{ animation-duration:.001s !important; transition-duration:.001s !important; } }
+</style>
+</head>
+<body>
+
+<div class="top-header">
+  <div class="brand"><div class="mark"></div><h1>Blockers</h1></div>
+  <p class="tagline">Race your pawn to the far side. Drop walls to slow your opponent down. First to the opposite edge wins.</p>
+</div>
+
+<!-- ============ HOME ============ -->
+<div class="screen active" id="screen-home">
+  <div class="home-grid">
+    <div class="hero-board" id="heroBoard"></div>
+    <div style="display:flex; flex-direction:column; gap:14px;">
+      <div class="card">
+        <h2>Play over WiFi</h2>
+        <p>Create a game and share the 8‑digit code with a friend on the same network — or anywhere with internet.</p>
+        <div class="btn-row">
+          <button class="btn btn-green" id="btnCreate">Create game</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Join a game</h2>
+        <p>Got a code from a friend? Enter it below to drop into their lobby.</p>
+        <input class="code-input" id="joinCodeInput" maxlength="8" inputmode="numeric" placeholder="00000000">
+        <div class="error-box" id="joinError"></div>
+        <div class="btn-row">
+          <button class="btn btn-orange" id="btnJoin">Join game</button>
+        </div>
+      </div>
+      <div class="divider-row">no network needed</div>
+      <div class="card">
+        <h2>Pass &amp; play</h2>
+        <p>Two players, one screen. No code, no waiting — just take turns.</p>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="btnLocal">Play locally</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <button class="rules-toggle" id="rulesToggle" style="margin-top:22px;">How do I play?</button>
+  <div class="rules-box" id="rulesBox">
+    Each player starts on opposite sides of a 9×9 board. On your turn, either step your pawn one square toward
+    the far edge, or spend one of your ten walls to block your opponent's route. Walls span two squares and can
+    never seal off someone's path completely — there's always a way through. If your pawn lands next to your
+    opponent, you can hop over them. First pawn to touch the opposite edge wins.
+  </div>
+</div>
+
+<!-- ============ HOST WAIT ============ -->
+<div class="screen" id="screen-hostwait">
+  <div class="card" style="max-width:380px; width:100%;">
+    <h2>Your game code</h2>
+    <p>Share this with the other player. They'll enter it on their device to join your lobby.</p>
+    <div class="code-display" id="hostCodeDisplay">........</div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btnCopyCode">Copy code</button>
+    </div>
+    <div class="status-line"><span class="dot pulse" id="hostStatusDot"></span><span id="hostStatusText">Setting up lobby…</span></div>
+    <div class="error-box" id="hostError"></div>
+    <button class="btn btn-ghost" id="btnCancelHost">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ JOIN CONNECTING ============ -->
+<div class="screen" id="screen-joinwait">
+  <div class="card" style="max-width:380px; width:100%;">
+    <h2>Joining lobby</h2>
+    <p>Connecting to code <strong id="joiningCodeText">........</strong></p>
+    <div class="status-line"><span class="dot pulse" id="joinStatusDot"></span><span id="joinStatusText">Connecting…</span></div>
+    <div class="error-box" id="joinWaitError"></div>
+    <button class="btn btn-ghost" id="btnCancelJoin">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ GAME ============ -->
+<div class="screen" id="screen-game">
+  <div class="game-layout">
+    <div class="board-col">
+      <div class="board-shell"><div class="board" id="board"></div></div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-title"><span class="mark"></span>Blockers</div>
+
+      <div class="turn-banner" id="turnBanner">
+        <div id="turnBannerMain">Your turn</div>
+        <div class="sub" id="turnBannerSub">Move a step, or drop a wall.</div>
+      </div>
+
+      <div class="stat-row a" id="statA">
+        <span class="swatch a"></span>
+        <span class="name" id="nameA">Player A</span>
+        <span class="walls" id="wallsA">10 walls</span>
+      </div>
+      <div class="stat-row b" id="statB">
+        <span class="swatch b"></span>
+        <span class="name" id="nameB">Player B</span>
+        <span class="walls" id="wallsB">10 walls</span>
+      </div>
+
+      <div class="panel-block">
+        <h3>Wall orientation</h3>
+        <div class="mode-toggle" id="wallModeToggle">
+          <button data-mode="h" class="active">Horizontal</button>
+          <button data-mode="v">Vertical</button>
+        </div>
+        <div class="hint-key">Press R to rotate</div>
+      </div>
+
+      <div class="sidebar-spacer"></div>
+
+      <div class="sidebar-endgame" id="sidebarEndgame">
+        <div class="panel-block">
+          <div class="result" id="endResult">Player A wins
+            <span class="sub" id="endResultSub">Reached the far side first.</span>
+          </div>
+        </div>
+        <button class="btn btn-green" id="btnRematch">Play again</button>
+        <button class="btn btn-secondary" id="btnHome">Main menu</button>
+      </div>
+
+      <div class="sidebar-actions" id="sidebarActions">
+        <button class="btn btn-secondary" id="btnLeave">Leave game</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- constants & state ---------------- */
+  const SIZE = 9;
+  const GOAL_ROW = { A: 8, B: 0 };
+  const START_POS = { A:{r:0,c:4}, B:{r:8,c:4} };
+  const ID_PREFIX = "blockers8-";
+
+  let mode = null;          // 'online' | 'local'
+  let role = null;          // 'host' | 'joiner' | null
+  let myKey = null;         // 'A' | 'B' (which player *this device* controls in online mode)
+  let peer = null, conn = null;
+  let joinTimeoutId = null;
+  let viewFlipped = false;  // true when this device's own pawn should render at the bottom
+
+  let positions, wallsLeft, placedWalls, currentTurn, gameOver, winner;
+  let wallOrientation = 'h';
+  let hoverNotch = null;
+
+  function resetGameState(){
+    positions = { A:{...START_POS.A}, B:{...START_POS.B} };
+    wallsLeft = { A:10, B:10 };
+    placedWalls = [];
+    currentTurn = 'A';
+    gameOver = false;
+    winner = null;
+    wallOrientation = 'h';
+    hoverNotch = null;
+  }
+  resetGameState();
+
+  /* ---------------- helpers ---------------- */
+  const other = p => p === 'A' ? 'B' : 'A';
+  const inBounds = (r,c) => r>=0 && r<SIZE && c>=0 && c<SIZE;
+  const vr  = r => viewFlipped ? (SIZE-1-r) : r;   // view row for cells (0..8)
+  const vgr = r => viewFlipped ? (7-r) : r;        // view row for wall/notch gaps (0..7)
+
+  function blockedBetween(r,c,dr,dc,walls){
+    walls = walls || placedWalls;
+    if(dr===1)  return walls.some(w=>w.o==='h' && w.r===r   && (w.c===c || w.c===c-1));
+    if(dr===-1) return walls.some(w=>w.o==='h' && w.r===r-1 && (w.c===c || w.c===c-1));
+    if(dc===1)  return walls.some(w=>w.o==='v' && w.c===c   && (w.r===r || w.r===r-1));
+    if(dc===-1) return walls.some(w=>w.o==='v' && w.c===c-1 && (w.r===r || w.r===r-1));
+    return false;
+  }
+
+  function getValidMoves(p, walls){
+    walls = walls || placedWalls;
+    const pos = positions[p], opp = other(p), oppPos = positions[opp];
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    const moves = [];
+    for(const [dr,dc] of dirs){
+      const nr=pos.r+dr, nc=pos.c+dc;
+      if(!inBounds(nr,nc) || blockedBetween(pos.r,pos.c,dr,dc,walls)) continue;
+      if(nr===oppPos.r && nc===oppPos.c){
+        const jr=nr+dr, jc=nc+dc;
+        if(inBounds(jr,jc) && !blockedBetween(nr,nc,dr,dc,walls)){
+          moves.push({r:jr,c:jc});
+        } else {
+          const perp = dr!==0 ? [[0,1],[0,-1]] : [[1,0],[-1,0]];
+          for(const [pdr,pdc] of perp){
+            const dr2=nr+pdr, dc2=nc+pdc;
+            if(inBounds(dr2,dc2) && !blockedBetween(nr,nc,pdr,pdc,walls)) moves.push({r:dr2,c:dc2});
+          }
+        }
+      } else {
+        moves.push({r:nr,c:nc});
+      }
+    }
+    return moves;
+  }
+
+  function wallOverlap(o,r,c,walls){
+    walls = walls || placedWalls;
+    if(o==='h'){
+      if(walls.some(w=>w.o==='h' && w.r===r && Math.abs(w.c-c)<=1)) return true;
+      if(walls.some(w=>w.o==='v' && w.r===r && w.c===c)) return true;
+    } else {
+      if(walls.some(w=>w.o==='v' && w.c===c && Math.abs(w.r-r)<=1)) return true;
+      if(walls.some(w=>w.o==='h' && w.r===r && w.c===c)) return true;
+    }
+    return false;
+  }
+
+  function pathExists(p, walls){
+    const start = positions[p], goalR = GOAL_ROW[p];
+    const seen = new Set([start.r+','+start.c]);
+    const queue = [start];
+    while(queue.length){
+      const cur = queue.shift();
+      if(cur.r === goalR) return true;
+      const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+      for(const [dr,dc] of dirs){
+        const nr=cur.r+dr, nc=cur.c+dc, key=nr+','+nc;
+        if(inBounds(nr,nc) && !seen.has(key) && !blockedBetween(cur.r,cur.c,dr,dc,walls)){
+          seen.add(key); queue.push({r:nr,c:nc});
+        }
+      }
+    }
+    return false;
+  }
+
+  function canPlaceWall(o,r,c,owner){
+    if(wallsLeft[owner] <= 0) return false;
+    if(r<0||r>7||c<0||c>7) return false;
+    if(wallOverlap(o,r,c)) return false;
+    const hypothetical = placedWalls.concat([{o,r,c}]);
+    if(!pathExists('A',hypothetical) || !pathExists('B',hypothetical)) return false;
+    return true;
+  }
+
+  function applyMove(p,pos){
+    positions[p] = {r:pos.r, c:pos.c};
+    if(pos.r === GOAL_ROW[p]){ gameOver = true; winner = p; }
+  }
+  function applyWall(o,r,c,owner){
+    placedWalls.push({o,r,c,owner});
+    wallsLeft[owner]--;
+  }
+
+  function isMyTurnLocally(){
+    if(mode === 'local') return true;
+    if(mode === 'online') return myKey === currentTurn;
+    return false;
+  }
+
+  /* ---------------- networking ---------------- */
+  function sendMsg(obj){ if(conn && conn.open) conn.send(obj); }
+
+  function genCode(){
+    let n = Math.floor(Math.random()*1e8);
+    return String(n).padStart(8,'0');
+  }
+  function formatCode(code){ return code.slice(0,4) + ' ' + code.slice(4); }
+
+  function destroyPeer(){
+    try{ if(conn) conn.close(); }catch(e){}
+    try{ if(peer) peer.destroy(); }catch(e){}
+    conn = null; peer = null;
+    if(joinTimeoutId){ clearTimeout(joinTimeoutId); joinTimeoutId = null; }
+  }
+
+  function hostFlow(attempt){
+    attempt = attempt || 0;
+    role = 'host';
+    const code = genCode();
+    show('screen-hostwait');
+    setText('hostCodeDisplay', formatCode(code));
+    setText('hostStatusText', 'Setting up lobby…');
+    setDot('hostStatusDot','pulse');
+    hideError('hostError');
+
+    destroyPeer();
+    peer = new Peer(ID_PREFIX+code);
+
+    peer.on('open', ()=>{
+      setText('hostStatusText', 'Waiting for a player to join…');
+    });
+
+    peer.on('connection', c=>{
+      if(conn){ c.close(); return; } // only accept one opponent
+      conn = c;
+      wireConnection('host');
+    });
+
+    peer.on('error', err=>{
+      if(err && err.type === 'unavailable-id' && attempt < 4){
+        hostFlow(attempt+1); return;
+      }
+      setDot('hostStatusDot','err');
+      setText('hostStatusText', 'Could not open a lobby.');
+      showError('hostError', friendlyPeerError(err));
+    });
+  }
+
+  function joinFlow(rawCode){
+    role = 'joiner';
+    const code = (rawCode||'').replace(/\D/g,'');
+    if(code.length !== 8){
+      showError('joinError', 'Enter the full 8‑digit code your friend shared with you.');
+      return;
+    }
+    hideError('joinError');
+    show('screen-joinwait');
+    setText('joiningCodeText', formatCode(code));
+    setText('joinStatusText', 'Connecting…');
+    setDot('joinStatusDot','pulse');
+    hideError('joinWaitError');
+
+    destroyPeer();
+    peer = new Peer();
+
+    peer.on('open', ()=>{
+      conn = peer.connect(ID_PREFIX+code, {reliable:true});
+      wireConnection('joiner');
+      joinTimeoutId = setTimeout(()=>{
+        if(!conn || !conn.open){
+          setDot('joinStatusDot','err');
+          setText('joinStatusText','No response.');
+          showError('joinWaitError', "Couldn't find that game. Double-check the code and make sure your friend's lobby is still open.");
+          destroyPeer();
+        }
+      }, 12000);
+    });
+
+    peer.on('error', err=>{
+      setDot('joinStatusDot','err');
+      setText('joinStatusText','Connection failed.');
+      showError('joinWaitError', friendlyPeerError(err));
+    });
+  }
+
+  function friendlyPeerError(err){
+    const t = err && err.type;
+    if(t === 'peer-unavailable') return "That code doesn't match an open game. Ask your friend to check it, or create a new one.";
+    if(t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed'){
+      return "Couldn't reach the matchmaking service — check that this device has an internet connection.";
+    }
+    if(t === 'browser-incompatible') return "This browser doesn't support the peer-to-peer connection Blockers needs.";
+    return "Something went wrong connecting. Please try again.";
+  }
+
+  function wireConnection(who){
+    conn.on('open', ()=>{
+      if(joinTimeoutId){ clearTimeout(joinTimeoutId); joinTimeoutId = null; }
+      if(who === 'host'){
+        myKey = 'A';
+        sendMsg({type:'assign', you:'B'});
+        beginOnlineGame();
+      } else {
+        setText('joinStatusText','Connected — joining game…');
+      }
+    });
+    conn.on('data', data=>{
+      if(!data || !data.type) return;
+      if(data.type === 'assign'){
+        myKey = data.you;
+        beginOnlineGame();
+        return;
+      }
+      if(data.type === 'move'){
+        applyMove(currentTurn, data.pos);
+        afterAction();
+      } else if(data.type === 'wall'){
+        applyWall(data.o, data.r, data.c, currentTurn);
+        afterAction();
+      } else if(data.type === 'reset'){
+        applyRematch();
+        toast('Opponent started a new match.');
+      } else if(data.type === 'left'){
+        handleOpponentLeft();
+      }
+    });
+    conn.on('close', ()=> handleOpponentLeft());
+    conn.on('error', ()=> handleOpponentLeft());
+  }
+
+  function handleOpponentLeft(){
+    if(mode !== 'online') return;
+    toast('Your opponent left the game.');
+    mode = null;
+  }
+
+  function beginOnlineGame(){
+    resetGameState();
+    mode = 'online';
+    viewFlipped = (myKey === 'A');
+    show('screen-game');
+    buildBoardSkeleton();
+    renderAll();
+  }
+
+  /* ---------------- local (pass & play) ---------------- */
+  function startLocalGame(){
+    destroyPeer();
+    role = null; myKey = null;
+    resetGameState();
+    mode = 'local';
+    viewFlipped = false;
+    show('screen-game');
+    buildBoardSkeleton();
+    renderAll();
+  }
+
+  /* ---------------- action entry points ---------------- */
+  function attemptMove(pos){
+    if(gameOver || !isMyTurnLocally()) return;
+    const moves = getValidMoves(currentTurn);
+    if(!moves.some(m=>m.r===pos.r && m.c===pos.c)) return;
+    applyMove(currentTurn, pos);
+    if(mode === 'online') sendMsg({type:'move', pos});
+    afterAction();
+  }
+
+  function attemptWall(o,r,c){
+    if(gameOver || !isMyTurnLocally()) return;
+    if(!canPlaceWall(o,r,c,currentTurn)){
+      flashBoard();
+      return;
+    }
+    applyWall(o,r,c,currentTurn);
+    if(mode === 'online') sendMsg({type:'wall', o, r, c});
+    afterAction();
+  }
+
+  function afterAction(){
+    if(!gameOver) currentTurn = other(currentTurn);
+    renderAll();
+    if(gameOver) onGameOver();
+  }
+
+  /* ---------------- rendering ---------------- */
+  const boardEl = document.getElementById('board');
+  let cellEls = [], pawnA, pawnB;
+
+  function buildBoardSkeleton(){
+    boardEl.innerHTML = '';
+    boardEl.classList.remove('locked');
+    cellEls = [];
+    for(let r=0;r<SIZE;r++){
+      cellEls[r] = [];
+      for(let c=0;c<SIZE;c++){
+        const el = document.createElement('div');
+        el.className = 'cell';
+        if(r===GOAL_ROW.A) el.classList.add('goal-a');
+        if(r===GOAL_ROW.B) el.classList.add('goal-b');
+        const gr = vr(r);
+        el.style.gridRow = (2*gr+1)+' / '+(2*gr+2);
+        el.style.gridColumn = (2*c+1)+' / '+(2*c+2);
+        el.addEventListener('click', ()=> attemptMove({r,c}));
+        boardEl.appendChild(el);
+        cellEls[r][c] = el;
+      }
+    }
+    pawnA = document.createElement('div');
+    pawnA.className = 'pawn a';
+    pawnB = document.createElement('div');
+    pawnB.className = 'pawn b';
+    cellEls[START_POS.A.r][START_POS.A.c].appendChild(pawnA);
+    cellEls[START_POS.B.r][START_POS.B.c].appendChild(pawnB);
+
+    // notches for wall placement
+    for(let r=0;r<8;r++){
+      for(let c=0;c<8;c++){
+        const notch = document.createElement('div');
+        notch.className = 'notch';
+        const ggr = vgr(r);
+        notch.style.gridRow = (2*ggr+2)+' / '+(2*ggr+3);
+        notch.style.gridColumn = (2*c+2)+' / '+(2*c+3);
+        const hit = document.createElement('div');
+        hit.className = 'hit';
+        hit.addEventListener('mouseenter', ()=>{ hoverNotch = {r,c}; renderGhost(); });
+        hit.addEventListener('mouseleave', ()=>{ hoverNotch = null; renderGhost(); });
+        hit.addEventListener('click', ()=> attemptWall(wallOrientation, r, c));
+        hit.addEventListener('touchstart', ()=>{ hoverNotch = {r,c}; renderGhost(); }, {passive:true});
+        notch.appendChild(hit);
+        boardEl.appendChild(notch);
+      }
+    }
+  }
+
+  function flipMove(pawnEl, toEl){
+    const first = pawnEl.getBoundingClientRect();
+    toEl.appendChild(pawnEl);
+    const last = pawnEl.getBoundingClientRect();
+    const dx = first.left-last.left, dy = first.top-last.top;
+    pawnEl.style.transition = 'none';
+    pawnEl.style.transform = 'translate('+dx+'px,'+dy+'px)';
+    requestAnimationFrame(()=>{
+      pawnEl.style.transition = 'transform .28s cubic-bezier(.22,.85,.25,1)';
+      pawnEl.style.transform = 'translate(0,0)';
+    });
+  }
+
+  function wallGridStyle(el,o,r,c){
+    const gr = vgr(r);
+    if(o==='h'){
+      el.style.gridRow = (2*gr+2)+' / '+(2*gr+3);
+      el.style.gridColumn = (2*c+1)+' / '+(2*c+4);
+    } else {
+      el.style.gridRow = (2*gr+1)+' / '+(2*gr+4);
+      el.style.gridColumn = (2*c+2)+' / '+(2*c+3);
+    }
+  }
+
+  let placedWallEls = [];
+  function renderWalls(){
+    placedWallEls.forEach(el=>el.remove());
+    placedWallEls = [];
+    placedWalls.forEach(w=>{
+      const el = document.createElement('div');
+      el.className = 'wall-bar';
+      wallGridStyle(el, w.o, w.r, w.c);
+      boardEl.appendChild(el);
+      placedWallEls.push(el);
+    });
+  }
+
+  let ghostEl = null;
+  function renderGhost(){
+    if(ghostEl){ ghostEl.remove(); ghostEl = null; }
+    if(!hoverNotch || gameOver || !isMyTurnLocally()) return;
+    const {r,c} = hoverNotch;
+    const ok = canPlaceWall(wallOrientation, r, c, currentTurn);
+    ghostEl = document.createElement('div');
+    ghostEl.className = 'wall-bar ghost ' + (ok ? 'ok' : 'bad');
+    wallGridStyle(ghostEl, wallOrientation, r, c);
+    boardEl.appendChild(ghostEl);
+  }
+
+  function renderPawns(){
+    const targetA = cellEls[positions.A.r][positions.A.c];
+    const targetB = cellEls[positions.B.r][positions.B.c];
+    if(targetA !== pawnA.parentElement) flipMove(pawnA, targetA);
+    if(targetB !== pawnB.parentElement) flipMove(pawnB, targetB);
+  }
+
+  function renderMoveHints(){
+    document.querySelectorAll('.cell.move-hint').forEach(el=>el.classList.remove('move-hint'));
+    if(gameOver || !isMyTurnLocally()) return;
+    const moves = getValidMoves(currentTurn);
+    moves.forEach(m=> cellEls[m.r][m.c].classList.add('move-hint'));
+  }
+
+  function playerLabel(key){
+    if(mode==='online') return myKey===key ? 'You' : 'Opponent';
+    if(mode==='local') return key==='A' ? 'Player A' : 'Player B';
+    return key==='A' ? 'Player A' : 'Player B';
+  }
+
+  function renderHud(){
+    setText('wallsA', wallsLeft.A + ' wall' + (wallsLeft.A===1?'':'s'));
+    setText('wallsB', wallsLeft.B + ' wall' + (wallsLeft.B===1?'':'s'));
+    setText('nameA', playerLabel('A'));
+    setText('nameB', playerLabel('B'));
+    document.getElementById('statA').classList.toggle('turn', currentTurn==='A' && !gameOver);
+    document.getElementById('statB').classList.toggle('turn', currentTurn==='B' && !gameOver);
+
+    if(!gameOver){
+      const mine = isMyTurnLocally();
+      let main, sub;
+      if(mode==='online'){
+        main = mine ? 'Your turn' : "Opponent's turn";
+        sub = mine ? 'Move a step, or drop a wall.' : 'Waiting for their move…';
+      } else {
+        main = playerLabel(currentTurn) + "'s turn";
+        sub = 'Move a step, or drop a wall.';
+      }
+      setText('turnBannerMain', main);
+      setText('turnBannerSub', sub);
+    }
+    document.getElementById('turnBanner').style.display = gameOver ? 'none' : '';
+
+    boardEl.classList.toggle('locked', gameOver || !isMyTurnLocally());
+  }
+
+  function syncWallToggleUI(){
+    document.querySelectorAll('#wallModeToggle button').forEach(b=>{
+      b.classList.toggle('active', b.dataset.mode === wallOrientation);
+    });
+  }
+
+  function renderAll(){
+    renderWalls();
+    renderPawns();
+    renderMoveHints();
+    renderGhost();
+    renderHud();
+    syncWallToggleUI();
+  }
+
+  function flashBoard(){
+    boardEl.animate(
+      [{transform:'translateX(0)'},{transform:'translateX(-6px)'},{transform:'translateX(6px)'},{transform:'translateX(0)'}],
+      {duration:220}
+    );
+  }
+
+  /* ---------------- win animation ---------------- */
+  function playWinAnimation(w){
+    const color = w==='A' ? 'var(--green)' : 'var(--orange)';
+    const origin = positions[w];
+    for(let r=0;r<SIZE;r++){
+      for(let c=0;c<SIZE;c++){
+        const el = cellEls[r][c];
+        const dist = Math.abs(r-origin.r)+Math.abs(c-origin.c);
+        el.style.transition = 'background-color .5s ease';
+        el.style.transitionDelay = (dist*24)+'ms';
+      }
+    }
+    requestAnimationFrame(()=>{
+      for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++) cellEls[r][c].style.backgroundColor = color;
+    });
+  }
+  function clearWinAnimation(){
+    if(!cellEls.length) return;
+    for(let r=0;r<SIZE;r++){
+      for(let c=0;c<SIZE;c++){
+        const el = cellEls[r][c];
+        if(!el) continue;
+        el.style.transition = '';
+        el.style.transitionDelay = '';
+        el.style.backgroundColor = '';
+      }
+    }
+  }
+
+  /* ---------------- end of game / toast ---------------- */
+  function applyRematch(){
+    clearWinAnimation();
+    resetGameState();
+    document.getElementById('sidebarEndgame').classList.remove('show');
+    document.getElementById('sidebarActions').style.display = '';
+    renderAll();
+  }
+
+  function onGameOver(){
+    playWinAnimation(winner);
+    let title, sub;
+    if(mode==='online'){
+      const won = winner===myKey;
+      title = won ? 'You win!' : 'You lost';
+      sub = won ? 'You reached the far side first.' : 'Your opponent reached the far side first.';
+    } else {
+      title = playerLabel(winner) + ' wins';
+      sub = 'Reached the opposite edge first.';
+    }
+    document.getElementById('endResult').innerHTML = title + '<span class="sub" id="endResultSub">'+sub+'</span>';
+    document.getElementById('sidebarEndgame').classList.add('show');
+    document.getElementById('sidebarActions').style.display = 'none';
+  }
+
+  let toastTimer = null;
+  function toast(msg){
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> el.classList.remove('show'), 3200);
+  }
+
+  /* ---------------- board sizing ---------------- */
+  function fitBoard(){
+    if(!document.body.classList.contains('in-game')) return;
+    if(window.innerWidth <= 860){
+      document.documentElement.style.setProperty('--cell','clamp(26px,9vw,44px)');
+      document.documentElement.style.setProperty('--gap','clamp(8px,2.4vw,12px)');
+      return;
+    }
+    const sidebarW = 270, colGap = 26, outerPad = 60;
+    const availW = window.innerWidth - sidebarW - colGap - outerPad;
+    const availH = window.innerHeight - 40;
+    const available = Math.max(220, Math.min(availW, availH));
+    const factor = 9 + 8*0.3;
+    let cell = (available - 26) / factor;
+    cell = Math.max(26, Math.min(cell, 56));
+    const gap = cell*0.3;
+    document.documentElement.style.setProperty('--cell', cell+'px');
+    document.documentElement.style.setProperty('--gap', gap+'px');
+  }
+  window.addEventListener('resize', fitBoard);
+
+  /* ---------------- screen / dom utils ---------------- */
+  function show(id){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.body.classList.toggle('in-game', id==='screen-game');
+    if(id==='screen-game') fitBoard();
+  }
+  function setText(id,txt){ document.getElementById(id).textContent = txt; }
+  function setDot(id,cls){ document.getElementById(id).className = 'dot ' + cls; }
+  function showError(id,msg){ const el=document.getElementById(id); el.textContent=msg; el.classList.add('show'); }
+  function hideError(id){ const el=document.getElementById(id); el.classList.remove('show'); }
+
+  function goHome(){
+    destroyPeer();
+    mode = null; role = null; myKey = null;
+    show('screen-home');
+  }
+
+  /* ---------------- wiring ---------------- */
+  document.getElementById('btnCreate').addEventListener('click', ()=> hostFlow(0));
+  document.getElementById('btnJoin').addEventListener('click', ()=> joinFlow(document.getElementById('joinCodeInput').value));
+  document.getElementById('joinCodeInput').addEventListener('keydown', e=>{ if(e.key==='Enter') joinFlow(e.target.value); });
+  document.getElementById('joinCodeInput').addEventListener('input', e=>{
+    e.target.value = e.target.value.replace(/\D/g,'').slice(0,8);
+  });
+  document.getElementById('btnLocal').addEventListener('click', startLocalGame);
+  document.getElementById('btnCancelHost').addEventListener('click', goHome);
+  document.getElementById('btnCancelJoin').addEventListener('click', goHome);
+  document.getElementById('btnLeave').addEventListener('click', ()=>{
+    sendMsg({type:'left'});
+    goHome();
+  });
+  document.getElementById('btnHome').addEventListener('click', goHome);
+  document.getElementById('btnRematch').addEventListener('click', ()=>{
+    applyRematch();
+    sendMsg({type:'reset'});
+  });
+  document.getElementById('btnCopyCode').addEventListener('click', ()=>{
+    const code = document.getElementById('hostCodeDisplay').textContent.replace(/\s/g,'');
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(code).then(()=> toast('Code copied.'));
+    } else {
+      toast('Code: ' + code);
+    }
+  });
+  document.getElementById('rulesToggle').addEventListener('click', ()=>{
+    document.getElementById('rulesBox').classList.toggle('show');
+  });
+  document.getElementById('wallModeToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('button[data-mode]');
+    if(!btn) return;
+    wallOrientation = btn.dataset.mode;
+    document.querySelectorAll('#wallModeToggle button').forEach(b=>b.classList.toggle('active', b===btn));
+    renderGhost();
+  });
+  document.addEventListener('keydown', e=>{
+    if(document.getElementById('screen-game').classList.contains('active') && (e.key==='r' || e.key==='R')){
+      const btn = document.querySelector('#wallModeToggle button[data-mode="'+(wallOrientation==='h'?'v':'h')+'"]');
+      if(btn) btn.click();
+    }
+  });
+
+  /* ---------------- tiny hero illustration ---------------- */
+  (function heroIllustration(){
+    const wrap = document.getElementById('heroBoard');
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const size = 220, cells = 5, cell = size/cells;
+    const svg = document.createElementNS(svgNS,'svg');
+    svg.setAttribute('viewBox','0 0 '+size+' '+size);
+    svg.setAttribute('width','100%');
+    svg.setAttribute('height','auto');
+    svg.style.maxWidth = '260px';
+    for(let i=0;i<cells;i++){
+      for(let j=0;j<cells;j++){
+        const rect = document.createElementNS(svgNS,'rect');
+        rect.setAttribute('x', j*cell+3);
+        rect.setAttribute('y', i*cell+3);
+        rect.setAttribute('width', cell-6);
+        rect.setAttribute('height', cell-6);
+        rect.setAttribute('rx', 5);
+        rect.setAttribute('fill', (i+j)%2===0 ? '#232327' : '#28282d');
+        svg.appendChild(rect);
+      }
+    }
+    const walls = [[0,1,'h'],[1,3,'v'],[2,0,'h'],[3,2,'v']];
+    walls.forEach(([r,c,o])=>{
+      const bar = document.createElementNS(svgNS,'rect');
+      if(o==='h'){
+        bar.setAttribute('x', c*cell);
+        bar.setAttribute('y', (r+1)*cell-4);
+        bar.setAttribute('width', cell*2);
+        bar.setAttribute('height', 8);
+      } else {
+        bar.setAttribute('x', (c+1)*cell-4);
+        bar.setAttribute('y', r*cell);
+        bar.setAttribute('width', 8);
+        bar.setAttribute('height', cell*2);
+      }
+      bar.setAttribute('rx',3);
+      bar.setAttribute('fill','#C7CAD1');
+      svg.appendChild(bar);
+    });
+    const pawnA2 = document.createElementNS(svgNS,'circle');
+    pawnA2.setAttribute('cx', 2*cell+cell/2); pawnA2.setAttribute('cy', cell/2); pawnA2.setAttribute('r', cell*0.3);
+    pawnA2.setAttribute('fill','#3ECF6E');
+    const pawnB2 = document.createElementNS(svgNS,'circle');
+    pawnB2.setAttribute('cx', 2*cell+cell/2); pawnB2.setAttribute('cy', size-cell/2); pawnB2.setAttribute('r', cell*0.3);
+    pawnB2.setAttribute('fill','#FF9A3C');
+    svg.appendChild(pawnA2); svg.appendChild(pawnB2);
+    wrap.appendChild(svg);
+  })();
+
+  window.addEventListener('beforeunload', ()=>{ sendMsg({type:'left'}); });
+})();
+</script>
+</body>
+</html>
